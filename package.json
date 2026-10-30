@@ -1,0 +1,13 @@
+{
+  "name": "stressmap",
+  "version": "1.0.0",
+  "description": "三环压力镜 - 大学生压力自我觉察工具",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "localtunnel": "^2.0.2"
+  }
+}

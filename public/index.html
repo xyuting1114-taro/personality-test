@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>StressMap · Three-Ring Pressure Mirror</title>
+<link rel="stylesheet" href="/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="logo">S</div>
+    <span>StressMap · Three-Ring Pressure Mirror</span>
+    <button class="lang-toggle" id="langToggle" aria-label="Switch language">中文</button>
+  </div>
+
+  <!-- 步骤指示器 -->
+  <div class="steps" id="steps">
+    <div class="step-dot" data-step="0"></div>
+    <div class="step-dot" data-step="1"></div>
+    <div class="step-dot" data-step="2"></div>
+  </div>
+
+  <!-- 视图容器 -->
+  <div id="view"></div>
+</div>
+
+<script src="/js/i18n.js"></script>
+<script src="/js/app.js"></script>
+<script>
+  // 语言切换按钮：当前语言为 en 时显示"中文"，为 zh 时显示"EN"
+  (function () {
+    const btn = document.getElementById('langToggle');
+    function syncBtn() {
+      btn.textContent = (getLang() === 'en') ? '中文' : 'EN';
+    }
+    syncBtn();
+    btn.addEventListener('click', () => {
+      setLang(getLang() === 'en' ? 'zh' : 'en');
+      syncBtn();
+    });
+    window.addEventListener('languageChanged', syncBtn);
+  })();
+</script>
+</body>
+</html>

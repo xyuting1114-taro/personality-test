@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StressMap 管理后台</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .admin-wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 80px; }
+  .admin-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .admin-top h1 { font-size: 22px; font-weight: 700; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat-card { background: #fff; border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+  .stat-card .num { font-size: 28px; font-weight: 700; color: var(--c-primary); }
+  .stat-card .lbl { font-size: 13px; color: var(--c-muted); }
+
+  .sub-item { background: #fff; border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .sub-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .sub-id { font-family: monospace; font-size: 12px; color: var(--c-muted); }
+  .sub-time { font-size: 13px; color: var(--c-muted); }
+  .sub-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .sub-body { grid-template-columns: 1fr; } }
+  .sub-col h4 { font-size: 13px; color: var(--c-primary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .ring-line { font-size: 13px; padding: 2px 0; }
+  .ring-line .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .sc-line { font-size: 12px; color: #444; padding: 2px 0; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-left: 4px; }
+  .pill-3 { background: #fde0e0; color: #c04040; }
+  .pill-2 { background: #fff1d6; color: #a07010; }
+  .pill-1 { background: #e3f5e6; color: #2f6a3a; }
+  .pill-A { background: #e8f0ff; color: #3f6fd4; }
+  .pill-B { background: #f0e8ff; color: #7b5bd4; }
+  .pill-C { background: #ffe8f0; color: #d43f6f; }
+  .report-box { background: var(--c-bg); border-radius: 10px; padding: 12px; margin-top: 10px; font-size: 13px; }
+  .report-box .r-title { font-weight: 700; margin-bottom: 4px; }
+
+  .login-box { max-width: 360px; margin: 80px auto; }
+  .login-box input { width: 100%; padding: 12px 14px; border: 2px solid var(--c-border); border-radius: 10px; font-size: 15px; margin-bottom: 14px; }
+  .login-box input:focus { outline: none; border-color: var(--c-primary); }
+
+  .del-btn { background: none; border: 1px solid #f0c0c0; color: #c04040; padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+  .del-btn:hover { background: #fff0f0; }
+  .empty-state { text-align: center; color: var(--c-muted); padding: 40px; }
+</style>
+</head>
+<body>
+<div class="admin-wrap">
+  <div id="loginView" class="login-box card" style="display:none;">
+    <h1>管理后台登录</h1>
+    <p class="subtitle">请输入管理员密码以查看数据。</p>
+    <input type="password" id="pwdInput" placeholder="管理员密码" autofocus>
+    <button class="btn btn-primary" id="loginBtn" style="width:100%;justify-content:center;">登录</button>
+  </div>
+
+  <div id="adminView" style="display:none;">
+    <div class="admin-top">
+      <h1>StressMap 数据后台</h1>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="downloadCsvBtn">📊 下载 CSV</button>
+        <button class="btn btn-ghost" id="downloadJsonBtn">📋 下载 JSON</button>
+        <button class="btn btn-ghost" id="refreshBtn">刷新</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div id="subList"></div>
+  </div>
+</div>
+
+<script>
+let adminPwd = sessionStorage.getItem('stressmap_admin_pwd') || '';
+let cachedSubs = [];
+
+const loginView = document.getElementById('loginView');
+const adminView = document.getElementById('adminView');
+
+function showLogin() {
+  loginView.style.display = 'block';
+  adminView.style.display = 'none';
+  document.getElementById('pwdInput').value = '';
+}
+function showAdmin() {
+  loginView.style.display = 'none';
+  adminView.style.display = 'block';
+  loadAll();
+}
+
+document.getElementById('loginBtn').onclick = doLogin;
+document.getElementById('pwdInput').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('refreshBtn').onclick = loadAll;
+document.getElementById('downloadCsvBtn').onclick = downloadCSV;
+document.getElementById('downloadJsonBtn').onclick = downloadJSON;
+
+async function doLogin() {
+  const pwd = document.getElementById('pwdInput').value.trim();
+  if (!pwd) return;
+  // 校验：调用 stats 接口
+  try {
+    const res = await fetch('/api/admin/stats?pwd=' + encodeURIComponent(pwd));
+    if (res.ok) {
+      adminPwd = pwd;
+      sessionStorage.setItem('stressmap_admin_pwd', pwd);
+      showAdmin();
+    } else {
+      alert('密码错误');
+    }
+  } catch (e) {
+    alert('网络错误：' + e.message);
+  }
+}
+
+async function apiGet(url) {
+  const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'pwd=' + encodeURIComponent(adminPwd));
+  if (res.status === 401) { adminPwd = ''; sessionStorage.removeItem('stressmap_admin_pwd'); showLogin(); return null; }
+  return res.json();
+}
+
+async function loadAll() {
+  const [stats, subs] = await Promise.all([apiGet('/api/admin/stats'), apiGet('/api/admin/submissions')]);
+  if (!stats || !subs) return;
+  cachedSubs = subs;
+  renderStats(stats, subs.length);
+  renderSubmissions(subs);
+}
+
+function renderStats(stats, total) {
+  const innerLabels = Object.keys(stats.innerCounts || {});
+  const topInner = innerLabels.sort((a,b) => (stats.innerCounts[b]||0)-(stats.innerCounts[a]||0)).slice(0,3);
+  const innerHtml = topInner.length
+    ? topInner.map(l => `<div style="font-size:13px;padding:2px 0;">${l} · <b>${stats.innerCounts[l]}</b></div>`).join('')
+    : '<div style="font-size:13px;color:var(--c-muted);">暂无</div>';
+
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card"><div class="num">${stats.total}</div><div class="lbl">总提交数</div></div>
+    <div class="stat-card">
+      <div class="lbl">应对风格分布</div>
+      <div style="margin-top:6px;font-size:13px;">
+        A 解决型：<b>${stats.copingCounts.A||0}</b><br>
+        B 求助型：<b>${stats.copingCounts.B||0}</b><br>
+        C 回避型：<b>${stats.copingCounts.C||0}</b>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="lbl">高频内环压力源 Top3</div>
+      <div style="margin-top:6px;">${innerHtml}</div>
+    </div>
+  `;
+}
+
+function renderSubmissions(subs) {
+  const list = document.getElementById('subList');
+  if (subs.length === 0) {
+    list.innerHTML = '<div class="empty-state">还没有提交数据。</div>';
+    return;
+  }
+  // 按时间倒序
+  subs.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  list.innerHTML = subs.map(s => {
+    const rings = s.rings || {};
+    const scenarios = s.scenarios || [];
+    const report = s.report || {};
+    const ringHtml = Object.entries(rings).sort((a,b)=>b[1]-a[1]).map(([l,v]) => {
+      const color = v===3?'#f0a0a0':v===2?'#f5c97a':'#9fd3a8';
+      const zone = v===3?'内环':v===2?'中环':'外环';
+      return `<div class="ring-line"><span class="dot" style="background:${color}"></span>${l} <span class="pill pill-${v}">${zone}</span></div>`;
+    }).join('');
+
+    const scHtml = scenarios.map(sc => {
+      const intTxt = sc.intensity===3?'高':sc.intensity===2?'中':'低';
+      return `<div class="sc-line">· ${sc.label}：强度<span class="pill pill-${sc.intensity}">${intTxt}</span> 应对<span class="pill pill-${sc.coping}">${sc.coping}</span></div>`;
+    }).join('');
+
+    const reportHtml = `
+      <div class="report-box">
+        <div class="r-title">主要压力源</div>
+        ${(report.mainStressors||[]).map(m=>`<div style="font-size:12px;padding:1px 0;">· ${m.label}</div>`).join('') || '<div style="font-size:12px;color:var(--c-muted);">无内环压力源</div>'}
+        <div class="r-title" style="margin-top:8px;">不一致项</div>
+        ${(report.inconsistencies||[]).map(i=>`<div style="font-size:12px;padding:1px 0;">· ${i.label}（${i.direction}，差${i.diff}）</div>`).join('') || '<div style="font-size:12px;color:var(--c-muted);">无</div>'}
+        <div class="r-title" style="margin-top:8px;">应对风格：${report.copingStyle||'-'}</div>
+      </div>
+    `;
+
+    return `
+      <div class="sub-item">
+        <div class="sub-head">
+          <div>
+            <span class="sub-id">ID: ${s.id.slice(0,8)}</span>
+            <span class="sub-time" style="margin-left:12px;">${new Date(s.createdAt).toLocaleString('zh-CN')}</span>
+          </div>
+          <button class="del-btn" data-id="${s.id}">删除</button>
+        </div>
+        <div class="sub-body">
+          <div class="sub-col">
+            <h4>三环归类</h4>
+            ${ringHtml}
+          </div>
+          <div class="sub-col">
+            <h4>情景题回答</h4>
+            ${scHtml}
+            ${reportHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // 绑定删除
+  list.querySelectorAll('.del-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('确定删除这条记录？')) return;
+      const id = btn.dataset.id;
+      await fetch('/api/admin/submissions/' + id + '?pwd=' + encodeURIComponent(adminPwd), { method: 'DELETE' });
+      loadAll();
+    };
+  });
+}
+
+// ===== 数据导出 =====
+const DOMAIN_LABELS = [
+  '学业（考试，论文）', '家庭（父母）', '朋友（室友）', '亲密关系（伴侣）',
+  '组织（社团）', '实习求职（面试，简历）', '未来方向（考研，出国）', '健康（睡眠，饮食）'
+];
+
+function csvEscape(val) {
+  if (val === null || val === undefined) return '';
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function buildCSV(subs) {
+  // 表头
+  const headers = ['submission_id', 'created_at'];
+  DOMAIN_LABELS.forEach(l => headers.push('ring_' + l));
+  DOMAIN_LABELS.forEach(l => {
+    headers.push('sc_' + l + '_intensity');
+    headers.push('sc_' + l + '_coping');
+  });
+  headers.push('main_stressors_count', 'main_stressors_labels',
+               'inconsistencies_count', 'inconsistencies_labels',
+               'coping_style', 'count_A', 'count_B', 'count_C');
+
+  const rows = [headers];
+  subs.forEach(s => {
+    const rings = s.rings || {};
+    const scenarios = s.scenarios || [];
+    const report = s.report || {};
+    const scMap = {};
+    scenarios.forEach(sc => { scMap[sc.label] = sc; });
+
+    const row = [s.id, s.createdAt];
+    // 三环分数
+    DOMAIN_LABELS.forEach(l => row.push(rings[l] != null ? rings[l] : ''));
+    // 情景题
+    DOMAIN_LABELS.forEach(l => {
+      const sc = scMap[l];
+      row.push(sc ? sc.intensity : '');
+      row.push(sc ? sc.coping : '');
+    });
+    // 报告摘要
+    const main = report.mainStressors || [];
+    const incons = report.inconsistencies || [];
+    const counts = report.counts || {};
+    row.push(main.length);
+    row.push(main.map(m => m.label).join('|'));
+    row.push(incons.length);
+    row.push(incons.map(i => i.label + '(' + i.direction + ',差' + i.diff + ')').join('|'));
+    row.push(report.copingStyle || '');
+    row.push(counts.A || 0);
+    row.push(counts.B || 0);
+    row.push(counts.C || 0);
+
+    rows.push(row.map(csvEscape));
+  });
+
+  const csv = rows.map(r => r.join(',')).join('\r\n');
+  // UTF-8 BOM 让 Excel 正确识别中文
+  return '\uFEFF' + csv;
+}
+
+function downloadCSV() {
+  if (cachedSubs.length === 0) { alert('暂无数据可下载'); return; }
+  const csv = buildCSV(cachedSubs);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.download = 'stressmap-data-' + new Date().toISOString().slice(0,10) + '.csv';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function downloadJSON() {
+  if (cachedSubs.length === 0) { alert('暂无数据可下载'); return; }
+  const data = JSON.stringify(cachedSubs, null, 2);
+  const blob = new Blob([data], { type: 'application/json;charset=utf-8' });
+  const link = document.createElement('a');
+  link.download = 'stressmap-data-' + new Date().toISOString().slice(0,10) + '.json';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// 初始化
+if (adminPwd) {
+  // 验证密码是否仍有效
+  fetch('/api/admin/stats?pwd=' + encodeURIComponent(adminPwd)).then(res => {
+    if (res.ok) showAdmin(); else showLogin();
+  });
+} else {
+  showLogin();
+}
+</script>
+</body>
+</html>
